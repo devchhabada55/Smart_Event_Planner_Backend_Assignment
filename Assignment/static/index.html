@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Event Planner</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        .container { max-width: 1200px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1, h2 { color: #0056b3; }
+        form { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9; }
+        form div { margin-bottom: 10px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], input[type="date"], select {
+            width: calc(100% - 22px);
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover { background-color: #0056b3; }
+        .event-card {
+            background: #e9f5ff;
+            border: 1px solid #b3d9ff;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .event-card div { flex: 1; min-width: 200px; margin-right: 10px; }
+        .event-card button { margin-top: 5px; }
+        .weather-info, .trends-info, .comparison-info {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f0f8ff;
+            border: 1px solid #cce5ff;
+            border-radius: 5px;
+            white-space: pre-wrap; /* To preserve newlines in weather summary */
+        }
+        .error-message { color: red; font-weight: bold; margin-top: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Smart Event Planner</h1>
+
+        <section>
+            <h2>Create New Event</h2>
+            <form id="createEventForm">
+                <div>
+                    <label for="eventName">Event Name:</label>
+                    <input type="text" id="eventName" required>
+                </div>
+                <div>
+                    <label for="eventLocation">Location:</label>
+                    <input type="text" id="eventLocation" required>
+                </div>
+                <div>
+                    <label for="eventDate">Date:</label>
+                    <input type="date" id="eventDate" required>
+                </div>
+                <div>
+                    <label for="eventType">Event Type:</label>
+                    <select id="eventType" required>
+                        <option value="">Select Event Type</option>
+                        <option value="Outdoor Sports">Outdoor Sports</option>
+                        <option value="Wedding/Formal Events">Wedding/Formal Events</option>
+                        <option value="General Outdoor">General Outdoor</option>
+                    </select>
+                </div>
+                <button type="submit">Create Event</button>
+            </form>
+        </section>
+
+        <section>
+            <h2>Your Events</h2>
+            <div id="eventsList">
+                <!-- Events will be loaded here -->
+            </div>
+        </section>
+
+        <section>
+            <h2>Compare Locations Weather</h2>
+            <form id="compareLocationsForm">
+                <div>
+                    <label for="compareLocations">Locations (comma-separated):</label>
+                    <input type="text" id="compareLocations" placeholder="e.g., London,Paris,Berlin" required>
+                </div>
+                <div>
+                    <label for="compareDate">Date:</label>
+                    <input type="date" id="compareDate" required>
+                </div>
+                <div>
+                    <label for="compareEventType">Event Type:</label>
+                    <select id="compareEventType" required>
+                        <option value="">Select Event Type</option>
+                        <option value="Outdoor Sports">Outdoor Sports</option>
+                        <option value="Wedding/Formal Events">Wedding/Formal Events</option>
+                        <option value="General Outdoor">General Outdoor</option>
+                    </select>
+                </div>
+                <button type="submit">Compare Weather</button>
+                <div id="comparisonResults" class="comparison-info"></div>
+            </form>
+        </section>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://127.0.0.1:5000';
+
+        document.addEventListener('DOMContentLoaded', fetchEvents);
+
+        document.getElementById('createEventForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const eventName = document.getElementById('eventName').value;
+            const eventLocation = document.getElementById('eventLocation').value;
+            const eventDate = document.getElementById('eventDate').value;
+            const eventType = document.getElementById('eventType').value;
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/events`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: eventName, location: eventLocation, date: eventDate, event_type: eventType })
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    alert(data.message);
+                    fetchEvents(); // Refresh the list
+                    e.target.reset(); // Clear the form
+                } else {
+                    alert(`Error: ${data.error || data.message}`);
+                }
+            } catch (error) {
+                console.error('Error creating event:', error);
+                alert('Failed to create event. Network error or server unreachable.');
+            }
+        });
+
+        async function fetchEvents() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/events`);
+                const events = await response.json();
+                const eventsListDiv = document.getElementById('eventsList');
+                eventsListDiv.innerHTML = ''; // Clear existing list
+
+                if (events.length === 0) {
+                    eventsListDiv.innerHTML = '<p>No events created yet.</p>';
+                    return;
+                }
+
+                events.forEach(event => {
+                    const eventCard = document.createElement('div');
+                    eventCard.className = 'event-card';
+                    eventCard.innerHTML = `
+                        <div>
+                            <strong>${event.name}</strong> (${event.event_type})<br>
+                            Location: ${event.location}<br>
+                            Date: ${event.date}
+                        </div>
+                        <div>
+                            Suitability: <span style="font-weight: bold; color: ${getSuitabilityColor(event.suitability_score?.text)}">${event.suitability_score?.text || 'N/A'}</span>
+                            (Score: ${event.suitability_score?.score || 'N/A'})
+                        </div>
+                        <div>
+                            <button onclick="showWeatherDetails(${event.id})">Show Weather</button>
+                            <button onclick="fetchAlternatives(${event.id})">Alternatives</button>
+                            <button onclick="fetchWeatherTrends(${event.id})">Trends</button>
+                            <button onclick="fetchReminderSummary(${event.id})">Reminder</button>
+                        </div>
+                        <div id="weatherDetails-${event.id}" class="weather-info" style="display:none;"></div>
+                        <div id="alternatives-${event.id}" class="weather-info" style="display:none;"></div>
+                        <div id="trends-${event.id}" class="trends-info" style="display:none;"></div>
+                        <div id="reminder-${event.id}" class="weather-info" style="display:none;"></div>
+                    `;
+                    eventsListDiv.appendChild(eventCard);
+                });
+            } catch (error) {
+                console.error('Error fetching events:', error);
+                document.getElementById('eventsList').innerHTML = '<p class="error-message">Failed to load events. Network error or server unreachable.</p>';
+            }
+        }
+
+        function getSuitabilityColor(suitabilityText) {
+            switch (suitabilityText) {
+                case 'Good': return 'green';
+                case 'Okay': return 'orange';
+                case 'Poor': return 'red';
+                default: return 'gray';
+            }
+        }
+
+        async function showWeatherDetails(eventId) {
+            const weatherDetailsDiv = document.getElementById(`weatherDetails-${eventId}`);
+            weatherDetailsDiv.style.display = weatherDetailsDiv.style.display === 'none' ? 'block' : 'none';
+
+            if (weatherDetailsDiv.style.display === 'block' && weatherDetailsDiv.innerHTML === '') {
+                // Fetch event details to get location and date
+                const eventResponse = await fetch(`${API_BASE_URL}/events/${eventId}`);
+                const event = await eventResponse.json();
+                if (!event) {
+                    weatherDetailsDiv.innerHTML = '<p class="error-message">Event details not found.</p>';
+                    return;
+                }
+
+                // Try to fetch current/forecast weather
+                let weatherHtml = '<strong>Current/Forecast Weather:</strong><br>';
+                try {
+                    const response = await fetch(`${API_BASE_URL}/weather/${event.location}/${event.date}`);
+                    const data = await response.json();
+                    if (response.ok) {
+                        const weather = data.weather;
+                        weatherHtml += `Description: ${weather.description}<br>`;
+                        weatherHtml += `Temperature: ${weather.temperature_avg ? weather.temperature_avg.toFixed(1) + ' (Avg)' : weather.temperature?.toFixed(1)}°C<br>`;
+                        weatherHtml += `Humidity: ${weather.humidity_avg ? weather.humidity_avg.toFixed(1) + ' (Avg)' : weather.humidity}%<br>`;
+                        weatherHtml += `Wind Speed: ${weather.wind_speed_avg ? weather.wind_speed_avg.toFixed(1) + ' (Avg)' : weather.wind_speed?.toFixed(1)} m/s<br>`;
+                        weatherHtml += `Precipitation (last 3h/1h): ${weather.precipitation} mm<br>`;
+                    } else {
+                        weatherHtml += `<span class="error-message">Error: ${data.error || 'Failed to fetch current/forecast weather.'}</span><br>`;
+                    }
+                } catch (error) {
+                    weatherHtml += `<span class="error-message">Network error fetching current/forecast weather.</span><br>`;
+                }
+
+                // Try to fetch hourly forecast
+                weatherHtml += '<br><strong>Hourly Forecast:</strong><br>';
+                try {
+                    const hourlyResponse = await fetch(`${API_BASE_URL}/weather/${event.location}/${event.date}/hourly`);
+                    const hourlyData = await hourlyResponse.json();
+                    if (hourlyResponse.ok && hourlyData.hourly_forecast && hourlyData.hourly_forecast.length > 0) {
+                        hourlyData.hourly_forecast.slice(0, 5).forEach(hour => { // Show first 5 entries
+                            weatherHtml += `  ${new Date(hour.timestamp).toLocaleTimeString()}: ${hour.description}, ${hour.temperature?.toFixed(1)}°C, Wind: ${hour.wind_speed?.toFixed(1)} m/s, Precip: ${hour.precipitation}mm<br>`;
+                        });
+                        if (hourlyData.hourly_forecast.length > 5) {
+                            weatherHtml += `  ... (${hourlyData.hourly_forecast.length - 5} more entries)<br>`;
+                        }
+                    } else {
+                        weatherHtml += `<span class="error-message">Error: ${hourlyData.error || 'No hourly forecast available.'}</span><br>`;
+                    }
+                } catch (error) {
+                    weatherHtml += `<span class="error-message">Network error fetching hourly forecast.</span><br>`;
+                }
+
+                // Try to fetch historical weather (for testing dates in the past)
+                weatherHtml += '<br><strong>Historical Weather (if applicable):</strong><br>';
+                try {
+                    const historicalResponse = await fetch(`${API_BASE_URL}/weather/${event.location}/${event.date}/historical`);
+                    const historicalData = await historicalResponse.json();
+                    if (historicalResponse.ok && historicalData.historical_weather && historicalData.historical_weather.length > 0) {
+                         historicalData.historical_weather.slice(0, 5).forEach(hour => { // Show first 5 entries
+                            weatherHtml += `  ${new Date(hour.timestamp).toLocaleTimeString()}: ${hour.description}, ${hour.temperature?.toFixed(1)}°C, Wind: ${hour.wind_speed?.toFixed(1)} m/s, Precip: ${hour.precipitation}mm<br>`;
+                        });
+                        if (historicalData.historical_weather.length > 5) {
+                            weatherHtml += `  ... (${historicalData.historical_weather.length - 5} more entries)<br>`;
+                        }
+                    } else {
+                        weatherHtml += `<span class="error-message">Error: ${historicalData.error || 'No historical data available for this date/location.'}</span><br>`;
+                    }
+                } catch (error) {
+                    weatherHtml += `<span class="error-message">Network error fetching historical weather.</span><br>`;
+                }
+                
+                weatherDetailsDiv.innerHTML = weatherHtml;
+            }
+        }
+
+        async function fetchAlternatives(eventId) {
+            const alternativesDiv = document.getElementById(`alternatives-${eventId}`);
+            alternativesDiv.style.display = alternativesDiv.style.display === 'none' ? 'block' : 'none';
+
+            if (alternativesDiv.style.display === 'block' && alternativesDiv.innerHTML === '') {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/events/${eventId}/alternatives`);
+                    const data = await response.json();
+                    let html = '<strong>Alternative Dates:</strong><br>';
+                    if (response.ok && data.alternatives && data.alternatives.length > 0) {
+                        data.alternatives.forEach(alt => {
+                            html += `Date: ${alt.date}, Suitability: <span style="font-weight: bold; color: ${getSuitabilityColor(alt.suitability.text)}">${alt.suitability.text}</span> (Score: ${alt.suitability.score})<br>`;
+                            html += `  Weather: ${alt.weather.description || 'N/A'}, Temp: ${alt.weather.temperature_avg ? alt.weather.temperature_avg.toFixed(1) : alt.weather.temperature?.toFixed(1)}°C<br>`;
+                        });
+                    } else {
+                        html += `<p class="error-message">${data.message || data.error || 'No better alternative dates found.'}</p>`;
+                    }
+                    alternativesDiv.innerHTML = html;
+                } catch (error) {
+                    console.error('Error fetching alternatives:', error);
+                    alternativesDiv.innerHTML = '<p class="error-message">Failed to fetch alternatives. Network error or server unreachable.</p>';
+                }
+            }
+        }
+
+        async function fetchWeatherTrends(eventId) {
+            const trendsDiv = document.getElementById(`trends-${eventId}`);
+            trendsDiv.style.display = trendsDiv.style.display === 'none' ? 'block' : 'none';
+
+            if (trendsDiv.style.display === 'block' && trendsDiv.innerHTML === '') {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/events/${eventId}/weather-trends`);
+                    const data = await response.json();
+                    let html = '<strong>Weather Trends:</strong><br>';
+                    if (response.ok) {
+                        html += `Trend: ${data.trend}<br>`;
+                        html += `Message: ${data.message}<br>`;
+                        html += 'Daily Scores:<br>';
+                        for (const date in data.daily_scores) {
+                            html += `  ${date}: ${data.daily_scores[date].toFixed(1)}<br>`;
+                        }
+                    } else {
+                        html += `<p class="error-message">${data.error || 'Failed to fetch weather trends.'}</p>`;
+                    }
+                    trendsDiv.innerHTML = html;
+                } catch (error) {
+                    console.error('Error fetching weather trends:', error);
+                    trendsDiv.innerHTML = '<p class="error-message">Failed to fetch weather trends. Network error or server unreachable.</p>';
+                }
+            }
+        }
+
+        async function fetchReminderSummary(eventId) {
+            const reminderDiv = document.getElementById(`reminder-${eventId}`);
+            reminderDiv.style.display = reminderDiv.style.display === 'none' ? 'block' : 'none';
+
+            if (reminderDiv.style.display === 'block' && reminderDiv.innerHTML === '') {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/events/${eventId}/reminder-summary`);
+                    const data = await response.json();
+                    let html = '<strong>Reminder Summary:</strong><br>';
+                    if (response.ok) {
+                        html += data.reminder_summary;
+                    } else {
+                        html += `<p class="error-message">${data.message || data.error || 'Failed to generate reminder summary.'}</p>`;
+                    }
+                    reminderDiv.innerHTML = html;
+                } catch (error) {
+                    console.error('Error fetching reminder summary:', error);
+                    reminderDiv.innerHTML = '<p class="error-message">Failed to fetch reminder summary. Network error or server unreachable.</p>';
+                }
+            }
+        }
+
+        document.getElementById('compareLocationsForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const locationsInput = document.getElementById('compareLocations').value;
+            const locationsArray = locationsInput.split(',').map(loc => loc.trim()).filter(loc => loc);
+            const compareDate = document.getElementById('compareDate').value;
+            const compareEventType = document.getElementById('compareEventType').value;
+            const comparisonResultsDiv = document.getElementById('comparisonResults');
+            comparisonResultsDiv.innerHTML = 'Loading...';
+
+            if (locationsArray.length === 0) {
+                comparisonResultsDiv.innerHTML = '<p class="error-message">Please enter at least one location.</p>';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/weather/compare-locations`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ locations: locationsArray, date: compareDate, event_type: compareEventType })
+                });
+                const data = await response.json();
+                let html = '<strong>Comparison Results:</strong><br>';
+                if (response.ok) {
+                    if (data.length > 0) {
+                        data.forEach(result => {
+                            html += `Location: ${result.location}, Date: ${result.date}<br>`;
+                            if (result.suitability) {
+                                html += `  Suitability: <span style="font-weight: bold; color: ${getSuitabilityColor(result.suitability.text)}">${result.suitability.text}</span> (Score: ${result.suitability.score})<br>`;
+                                html += `  Weather: ${result.weather.description || 'N/A'}, Temp: ${result.weather.temperature_avg ? result.weather.temperature_avg.toFixed(1) : result.weather.temperature?.toFixed(1)}°C<br><br>`;
+                            } else if (result.error) {
+                                html += `  <span class="error-message">Error: ${result.error}</span><br><br>`;
+                            }
+                        });
+                    } else {
+                        html += `<p>${data.message || 'No comparison data available.'}</p>`;
+                    }
+                } else {
+                    html += `<p class="error-message">Error: ${data.error || 'Failed to compare locations.'}</p>`;
+                }
+                comparisonResultsDiv.innerHTML = html;
+            } catch (error) {
+                console.error('Error comparing locations:', error);
+                comparisonResultsDiv.innerHTML = '<p class="error-message">Failed to compare locations. Network error or server unreachable.</p>';
+            }
+        });
+    </script>
+</body>
+</html> 
